@@ -1,0 +1,174 @@
+<!DOCTYPE html>
+<html lang="en">
+	<head>
+		<meta charset="utf-8">
+		<meta name="viewport" content="width=device-width, user-scalable=no, minimum-scale=1.0, maximum-scale=1.0">
+		<style>
+			body {
+			margin: 0;
+			padding: 0;
+			width: 100%;
+			height: 100%;
+			
+			margin: 0;
+			overflow: hidden;
+			background-color: #AAAAAA;
+			background-attachment: fixed !important;
+			}
+		</style>
+		<style>
+			body {
+				font-family: Monospace;
+				margin: 0px;
+				overflow: hidden;
+			}
+            a {
+                position: relative;
+                top: 10px;
+                left: 10px;
+                font-size: 30px;
+                padding: 10px;
+            }
+		</style>
+	</head>
+    <body>
+        <a href="./index.html?sourceimage=image">Image</a>
+        <a href="./index.html?sourceimage=video">Video</a>
+        <a href="./index.html?sourceimage=webcam">Webcam</a>
+        <script id="VertShader" type="shader">
+            varying vec2 vUv;
+            uniform float vertixScale;
+            void main() {
+                vUv = vec2( uv.x, 1.0-uv.y );
+                gl_Position = projectionMatrix * modelViewMatrix * vec4(position*vertixScale, 1.0 );
+            }
+        </script>
+        <script id="FragShader" type="shader">
+            precision highp float;
+            uniform int kernelSizeDiv2;
+            uniform sampler2D image;
+            uniform vec2 resolution;
+            uniform float colorScaleR;
+            uniform float colorScaleG;
+            uniform float colorScaleB;
+            const float PI = 3.14159;
+            varying vec3 colors;
+            vec4 arr_median[121];
+            float arr[121]; // for median filter
+        
+            varying vec2 vUv;
+            
+            mat3 buildKNN (float size){
+                mat3 k_kernel = mat3(vec3(0.0),vec3(0.0),vec3(0.0));
+                for (int i=0;i<=int(size)*2;i++){
+                    for (int j=0;j<=int(size)*2;j++){
+                        k_kernel[i][j] = 1.0 / ( (size*2.0+1.0) * (size*2.0+1.0) );
+                    }
+                }
+                return (k_kernel);
+            }
+
+           
+            void bubbleSort()
+            {
+                bool swapped = true;
+                int j = 0;
+                float tmp;
+                vec4 tmp2;
+                for (int c = 0; c < 3; c--)
+                {
+                    if (!swapped)
+                        break;
+                    swapped = false;
+                    j++;
+                    for (int i = 0; i < 3; i++)
+                    {
+                        if (i >= 3 - j)
+                            break;
+                        if (arr[i] > arr[i + 1])
+                        {
+                            tmp = arr[i];
+                            arr[i] = arr[i + 1];
+                            arr[i + 1] = tmp;
+
+                            tmp2 = arr_median[i];
+                            arr_median[i] = arr_median[i + 1];
+                            arr_median[i + 1] = tmp2;
+                            swapped = true;
+                        }
+                    }
+                }
+            }
+
+            void main(void) {
+                vec2 cellSize = 1.0 / resolution.xy;
+                vec2 uv = vUv.xy;
+                vec3 scales;
+                vec3 transColor;
+        
+                vec4 textureValue = vec4 ( 0,0,0,0 );
+                vec4 textureValue2 = vec4 ( 0,0,0,0 ); // for median
+                
+
+                // KNN filter based on the median filter -> textureValue2
+                for (int i=-kernelSizeDiv2;i<=kernelSizeDiv2;i++){
+                    for (int j=-kernelSizeDiv2;j<=kernelSizeDiv2;j++){
+                        arr[(i+kernelSizeDiv2)*(kernelSizeDiv2*2+1)+(j+kernelSizeDiv2)] = length( texture2D( image, uv + vec2( float(i)*cellSize.x, float(j)*cellSize.y ) ) );
+                        arr_median[(i+kernelSizeDiv2)*(kernelSizeDiv2*2+1)+(j+kernelSizeDiv2)] = texture2D( image, uv + vec2( float(i)*cellSize.x, float(j)*cellSize.y ) );
+                    }
+                }
+                bubbleSort(); // Sort based on the length of the texture value.
+                int mid = (kernelSizeDiv2*2+1) * (kernelSizeDiv2*2+1);
+                int medianID = int(floor(float(mid)/2.0));
+                for (int i=-kernelSizeDiv2;i<=kernelSizeDiv2;i++){
+                    textureValue2 += arr_median[medianID+i];
+                }
+                textureValue2 /= float(kernelSizeDiv2*2+1);
+
+                gl_FragColor = vec4(vec3(colorScaleR,colorScaleG,colorScaleB),1.0)*textureValue2;
+
+            }
+
+            /* void buildGaussian (IVarray <float>& output, double size){
+                double sigma;
+                double sigma2;
+                double l;
+                int length, n, i;
+                
+                output.IValloc ( 2*(int)size + 1.0 );
+
+                sigma = sqrt( -(size*size) / (2.0 * log(1.0/255.0)));
+                sigma2 = (2.0*sigma*sigma);
+                l = sqrt( -sigma2 * log(1.0/255.0));
+
+                n = ceil(l)*2.0;
+                if( (n%2)==0)n++;
+                length = n/2;
+
+                float total = 0;
+                for (i=0;i<length;i++){
+                    double temp = exp(-(i*i)/sigma2);
+                    output[i+length-1] = temp;
+                    output[length-i-1] = temp;
+                    total+=2*temp;
+                }
+                for(i=0;i<output.IVnbElt();i++){
+                    output[i]/=total;
+                }
+            } */
+        </script>
+        <script>
+            var urlParam = location.search.substring(1);
+            console.log(urlParam);
+            if (urlParam=="sourceimage=video"){
+                document.write('<scr' + 'ipt src="video.js" type="module"><\/scr' + 'ipt>');
+            }
+            else if (urlParam=="sourceimage=webcam"){
+                document.write('<scr' + 'ipt src="webcam.js" type="module"><\/scr' + 'ipt>');
+            }
+            else{
+                document.write('<scr' + 'ipt src="image.js" type="module"><\/scr' + 'ipt>'); // for image
+            }
+        </script>
+    </body>
+</html>

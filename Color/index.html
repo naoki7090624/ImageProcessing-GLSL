@@ -1,0 +1,271 @@
+<!DOCTYPE html>
+<html lang="en">
+	<head>
+		<meta charset="utf-8">
+		<meta name="viewport" content="width=device-width, user-scalable=no, minimum-scale=1.0, maximum-scale=1.0">
+		<style>
+			body {
+			margin: 0;
+			padding: 0;
+			width: 100%;
+			height: 100%;
+			
+			margin: 0;
+			overflow: hidden;
+			background-color: #AAAAAA;
+			background-attachment: fixed !important;
+			}
+		</style>
+		<style>
+			body {
+				font-family: Monospace;
+				margin: 0px;
+				overflow: hidden;
+			}
+            a {
+                position: relative;
+                top: 10px;
+                left: 10px;
+                font-size: 30px;
+                padding: 10px;
+            }
+		</style>
+	</head>
+    <body>
+        <a href="./index.html?sourceimage=image">Image</a>
+        <a href="./index.html?sourceimage=video">Video</a>
+        <a href="./index.html?sourceimage=webcam">Webcam</a>
+        <script id="VertShader" type="shader">
+            varying vec2 vUv;
+            uniform float vertixScale;
+            void main() {
+                vUv = vec2( uv.x, 1.0-uv.y );
+                gl_Position = projectionMatrix * modelViewMatrix * vec4(position*vertixScale, 1.0 );
+            }
+        </script>
+        <script id="FragShader" type="shader">
+            precision highp float;
+            //const int kernelSizeDiv2 = 2;
+            uniform int kernelSizeDiv2;
+            uniform sampler2D image;
+            uniform vec2 resolution;
+            uniform float colorScaleR;
+            uniform float colorScaleG;
+            uniform float colorScaleB;
+            uniform float Lightness;
+            uniform float Chrome;
+            uniform float Hue;
+            const float PI = 3.14159;
+            varying vec3 colors;
+        
+            varying vec2 vUv;
+            
+
+            vec3 rgb2xyz(vec3 rgb){
+                float X = 0.0;
+                float Y = 0.0;
+                float Z = 0.0;
+                float R = rgb[0];
+                float G = rgb[1];
+                float B = rgb[2];
+                /*
+                if(R>0.04045){
+                    R = pow((R+0.055)/1.055, 2.4);
+                }
+                else{
+                    R = R / 12.92;
+                }
+                if(G>0.04045){
+                    G = pow((G+0.055)/1.055, 2.4);
+                }
+                else{
+                    G = G / 12.92;
+                }
+                if(B>0.04045){
+                    B = pow((B+0.055)/1.055, 2.4);
+                }
+                else{
+                    B = B / 12.92;
+                }
+                */
+                X = 0.41239080 * R + 0.35758434 * G + 0.18048079 * B;
+                Y = 0.21263901 * R + 0.71516868 * G + 0.07219232 * B;
+                Z = 0.01933082 * R + 0.11919478 * G + 0.95053215 * B;
+
+                vec3 xyz = vec3(X,Y,Z);
+                return (xyz);
+            }
+            vec3 xyz2lab(vec3 xyz){
+                float X = xyz[0]*100.0;
+                float Y = xyz[1]*100.0;
+                float Z = xyz[2]*100.0;
+                float x = X/95.0489;
+                float y = Y/100.0;
+                float z = Z/108.8840;
+
+                if(x > 0.008856){
+                    x = pow(x, 1.0/3.0);
+                }
+                else{
+                    x = (7.787*x) + (4.0/29.0);
+                }
+                if(y > 0.008856){
+                    y = pow(y, 1.0/3.0);
+                }
+                else{
+                    y = (7.787*y) + (4.0/29.0);
+                }
+                if(z > 0.008856){
+                    z = pow(z, 1.0/3.0);
+                }
+                else{
+                    z = (7.787*z) + (4.0/29.0);
+                }
+
+                float L = 116.0*y - 16.0;
+                float a = 500.0 * (x - y);
+                float b = 200.0 * (y - z);
+
+                vec3 lab = vec3( L, a, b ) ;
+
+                return (lab);
+            }
+            float atan2(in float y, in float x)
+            {
+                return x == 0.0 ? sign(y)*PI/2.0 : atan(y, x);
+            }
+            vec3 lab2lch(vec3 lab){
+                float L = lab[0] + Lightness;
+                float a = lab[1];
+                float b = lab[2];
+
+                float C = sqrt( a*a + b*b ) * Chrome;
+                float H = atan2(b,a) + Hue;
+                if(H<0.0){
+                    H = H + 2.0*PI;
+                }
+                else if(H>2.0*PI){
+                    H = H - 2.0*PI;
+                }
+
+                vec3 lch = vec3(L,C,H);
+                return (lch);
+            }
+            
+            vec3 lch2lab(vec3 lch){
+                float l = lch[0];
+                float c = lch[1];
+                float h = lch[2];
+
+                float L = l;
+                float a = c * cos(h);
+                float b = c * sin(h);
+
+                vec3 lab = vec3(L,a,b);
+                return (lab);
+            }
+            vec3 lab2xyz(vec3 lab){
+                float L = lab[0];
+                float a = lab[1];
+                float b = lab[2];
+                float x = (L+16.0)/116.0 + a/500.0;
+                float y = (L+16.0)/116.0;
+                float z = (L+16.0)/116.0 - b/200.0;
+
+
+                if(x > 0.20689655){
+                    x = pow(x, 3.0);
+                }
+                else{
+                    x = 0.12841855 * (x - 4.0/29.0);
+                }
+                if(y > 0.20689655){
+                    y = pow(y, 3.0);
+                }
+                else{
+                    y = 0.12841855 * (y - 4.0/29.0);
+                }
+                if(z > 0.20689655){
+                    z = pow(z, 3.0);
+                }
+                else{
+                    z = 0.12841855 * (z - 4.0/29.0);
+                }
+
+                float X = 95.0489 * x;
+                float Y = 100.0 * y; 
+                float Z = 108.8840 * z;
+
+                X = X / 100.0;
+                Y = Y / 100.0;
+                Z = Z / 100.0;
+
+                vec3 xyz = vec3( X, Y, Z ) ;
+
+                return (xyz);
+            }
+            vec3 xyz2rgb(vec3 xyz){
+                float X = xyz[0];
+                float Y = xyz[1];
+                float Z = xyz[2];
+
+                /*
+                if(X > 0.0031308){
+                    X = 1.055 * pow(X,1.0/2.4) - 0.055;
+                }
+                else{
+                    X = 12.92 * X;
+                }
+                if(Y > 0.0031308){
+                    Y = 1.055 * pow(Y,1.0/2.4) - 0.055;
+                }
+                else{
+                    Y = 12.92 * Y;
+                }
+                if(Z > 0.0031308){
+                    Z = 1.055 * pow(Z,1.0/2.4) - 0.055;
+                }
+                else{
+                    Z = 12.92 * Z;
+                }
+                */
+
+                float R = 3.24096994*X  - 1.53738318*Y - 0.49861076*Z;
+                float G = -0.96924364*X + 1.8759675*Y  + 0.04155506*Z;
+                float B = 0.05563008*X  - 0.20397696*Y + 1.05697151*Z;
+
+                vec3 rgb = vec3(R,G,B);
+                return (rgb);
+            }
+
+            void main(void) {
+                vec2 cellSize = 1.0 / resolution.xy;
+                vec2 uv = vUv.xy;
+                vec3 scales;
+                vec3 transColor;
+        
+                vec4 textureValue = vec4 ( 0,0,0,0 );
+                textureValue = texture2D( image, uv + vec2( 0, 0 ) );
+
+                //scales = vec3(colorScaleR,colorScaleG,colorScaleB);
+                scales = vec3(textureValue.x,textureValue.y,textureValue.z);
+                transColor = xyz2rgb(lab2xyz(lch2lab(lab2lch(xyz2lab(rgb2xyz(scales))))));
+                gl_FragColor = vec4(vec3(colorScaleR,colorScaleG,colorScaleB),1.0) * vec4(transColor,1.0); //vec4(transColor,1.0) * ((textureValue+textureValue2)/2.0);
+
+            }
+        </script>
+        <script>
+            var urlParam = location.search.substring(1);
+            console.log(urlParam);
+            if (urlParam=="sourceimage=video"){
+                document.write('<scr' + 'ipt src="video.js" type="module"><\/scr' + 'ipt>');
+            }
+            else if (urlParam=="sourceimage=webcam"){
+                document.write('<scr' + 'ipt src="webcam.js" type="module"><\/scr' + 'ipt>');
+            }
+            else{
+                document.write('<scr' + 'ipt src="image.js" type="module"><\/scr' + 'ipt>'); // for image
+            }
+        </script>
+    </body>
+</html>

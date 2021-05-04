@@ -1,0 +1,123 @@
+<!DOCTYPE html>
+<html lang="en">
+	<head>
+		<meta charset="utf-8">
+		<meta name="viewport" content="width=device-width, user-scalable=no, minimum-scale=1.0, maximum-scale=1.0">
+		<style>
+			body {
+			margin: 0;
+			padding: 0;
+			width: 100%;
+			height: 100%;
+			
+			margin: 0;
+			overflow: hidden;
+			background-color: #AAAAAA;
+			background-attachment: fixed !important;
+			}
+		</style>
+		<style>
+			body {
+				font-family: Monospace;
+				margin: 0px;
+				overflow: hidden;
+			}
+            a {
+                position: relative;
+                top: 10px;
+                left: 10px;
+                font-size: 30px;
+                padding: 10px;
+            }
+		</style>
+	</head>
+    <body>
+        <a href="./index.html?sourceimage=image">Image</a>
+        <a href="./index.html?sourceimage=video">Video</a>
+        <a href="./index.html?sourceimage=webcam">Webcam</a>
+        <script id="VertShader" type="shader">
+            varying vec2 vUv;
+            uniform float vertixScale;
+            void main() {
+                vUv = vec2( uv.x, 1.0-uv.y );
+                gl_Position = projectionMatrix * modelViewMatrix * vec4(position*vertixScale, 1.0 );
+            }
+        </script>
+        <script id="FragShader" type="shader">
+            precision highp float;
+            uniform int kernelSizeDiv2;
+            uniform sampler2D image;
+            uniform vec2 resolution;
+            uniform float colorScaleR;
+            uniform float colorScaleG;
+            uniform float colorScaleB;
+            const float PI = 3.14159;
+            varying vec3 colors;
+            uniform float sigma;
+        
+            varying vec2 vUv;
+
+            mat3 buildLaplacian (){
+                //mat3 l_kernel = mat3(1.0);
+                mat3 l_kernel = mat3(1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0);
+                //mat3 l_kernel = mat3(vec3(1.0),vec3(1.0),vec3(1.0));
+                l_kernel[1][1] = -8.0;
+                return l_kernel;
+            }
+
+            void main(void) {
+                vec2 cellSize = 1.0 / resolution.xy;
+                vec2 uv = vUv.xy;
+                vec3 scales;
+                vec3 transColor;
+                float total = 0.0;
+                float x;
+                float y;
+        
+                vec4 textureValue = vec4 ( 0,0,0,0 ); // for Gaussian
+                vec4 textureValue1 = vec4 ( 0,0,0,0 ); // for Gaussian
+                vec4 textureValue2 = vec4 ( 0,0,0,0 ); // for Laplacian
+
+                for (int i=-kernelSizeDiv2;i<=kernelSizeDiv2;i++){
+                    for (int j=-kernelSizeDiv2;j<=kernelSizeDiv2;j++){
+                        x = float(i);
+                        y = float(j);
+                        textureValue1 += texture2D( image, uv + vec2( float(i)*cellSize.x, float(j)*cellSize.y ) ) * (exp(-((x*x + y*y) / (2.0*sigma*sigma))) / (2.0*PI*sigma*sigma));
+                        total += exp(-((x*x + y*y) / (2.0*sigma*sigma))) / (2.0*PI*sigma*sigma);
+
+                        //textureValue += texture2D( image, uv + vec2( float(i)*cellSize.x, float(j)*cellSize.y ) ) * g_kernel[i+kernelSizeDiv2][j+kernelSizeDiv2];
+                    }
+                }
+                textureValue1 =  textureValue1 / total;
+
+                // Laplacian filtering
+
+                mat3 l_kernel = buildLaplacian();
+
+                for (int i=-1;i<=1;i++){
+                    for (int j=-1;j<=1;j++){
+                        textureValue2 += texture2D( image, uv + vec2( float(i)*cellSize.x, float(j)*cellSize.y ) ) * l_kernel[i+1][j+1];
+                    }
+                }
+                textureValue2 = (textureValue2 + 8.0) / 16.0; // normalize
+                
+                gl_FragColor = vec4(vec3(colorScaleR,colorScaleG,colorScaleB),1.0)*textureValue1;
+
+            }
+
+        </script>
+        <script>
+            var urlParam = location.search.substring(1);
+            console.log(urlParam);
+            if (urlParam=="sourceimage=video"){
+                document.write('<scr' + 'ipt src="video.js" type="module"><\/scr' + 'ipt>');
+            }
+            else if (urlParam=="sourceimage=webcam"){
+                document.write('<scr' + 'ipt src="webcam.js" type="module"><\/scr' + 'ipt>');
+            }
+            else{
+                document.write('<scr' + 'ipt src="image.js" type="module"><\/scr' + 'ipt>'); // for image
+            }
+        </script>
+    </body>
+</html>
